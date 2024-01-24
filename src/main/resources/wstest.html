@@ -1,0 +1,30 @@
+<!Doctype html>
+<body>
+    <div>
+        <form id="chatform">
+            <input type="text" name="entry" id="entry" />
+            <button type="submit">Send</button>
+        </form>
+    </div>
+    <script>
+        const form = document.getElementById("chatform");
+        const socket = new WebSocket("ws://localhost:8080/wsTest");
+
+        socket.onmessage = function (event) {
+            console.log(event.data);
+        };
+
+        socket.onclose = function (event) {
+            console.log("[Client] ws closed");
+        };
+
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            const message = document.getElementById('entry').value;
+            socket.send(message);
+            socket.close();
+            document.getElementById('entry').value = '';
+        });
+    </script>
+</body>
+</html>
