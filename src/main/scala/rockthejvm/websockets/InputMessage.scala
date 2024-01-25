@@ -39,7 +39,7 @@ object InputMessage {
               u.fold {
                 defaultRoom match
                   case Valid(r) =>
-                    processText4NonReg(txt, command, userRef, r)
+                    processText4UnReg(txt, command, userRef, r)
                   case Invalid(e) => Seq(ParsingError(u, e)).pure[F]
               } { user => procesText4Reg(user, txt, command) }
             }
@@ -57,7 +57,7 @@ object InputMessage {
   ): Either[Parser.Error, TextCommand] =
     commandParser.parseAll(value)
 
-  private def processText4NonReg[F[_]: Monad](
+  private def processText4UnReg[F[_]: Monad](
       text: String,
       cmd: Command[F],
       userRef: Ref[F, Option[User]],
