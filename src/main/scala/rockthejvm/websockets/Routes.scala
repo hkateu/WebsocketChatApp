@@ -58,7 +58,7 @@ object Routes {
                       .map(_.name)
                       .toList
                       .sorted
-                      .mkString(s"Room Members $room:\n\t", "\n\t", "")
+                      .mkString(s"${room.room} Room Members:\n\t", "\n\t", "")
                   )
                   .mkString("Rooms:\n\t", "\n\t", "")}
               |</pre>
