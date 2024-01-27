@@ -1,13 +1,11 @@
 package rockthejvm.websockets
 
 import fs2.io.file.Files
-import cats.MonadThrow
 import cats.effect.Temporal
 import org.http4s.server.websocket.WebSocketBuilder2
 import cats.effect.std.Queue
 import cats.effect.kernel.Ref
 import fs2.concurrent.Topic
-import cats.effect.kernel.Concurrent
 import org.http4s.{HttpApp, HttpRoutes}
 import org.http4s.dsl.Http4sDsl
 import org.http4s.StaticFile
@@ -16,14 +14,13 @@ import fs2.Stream
 import org.http4s.websocket.WebSocketFrame
 import fs2.Pipe
 import scala.concurrent.duration.*
-import cats.Monad
 import io.circe.generic.auto.*
 import io.circe.syntax.*
 import org.http4s.MediaType
 import org.http4s.headers.`Content-Type`
 
-object Routes {
-  def service[F[_]: Files: MonadThrow: Concurrent: Temporal](
+class Routes[F[_]: Files: Temporal] extends Http4sDsl[F] {
+  def service (
       wsb: WebSocketBuilder2[F],
       q: Queue[F, OutputMessage],
       t: Topic[F, OutputMessage],
@@ -31,8 +28,6 @@ object Routes {
       cmd: Command[F],
       cs: Ref[F, ChatState]
   ): HttpApp[F] = {
-    val dsl = new Http4sDsl[F] {}
-    import dsl.*
     HttpRoutes.of[F] {
       case request @ GET -> Root / "chat.html" =>
         StaticFile
@@ -43,29 +38,32 @@ object Routes {
           .getOrElseF(NotFound())
 
       case GET -> Root / "metrics" =>
-        def currentState: F[String] = cs.get.map { cState =>
-          s"""
-              |<!Doctype html>
-              |<title>Chat Server State</title>
-              |<body>
-              |<pre>Users: ${cState.userRooms.keys.size}</pre>
-              |<pre>Rooms: ${cState.roomMembers.keys.size}</pre>
-              |<pre>Overview: 
-              |${cState.roomMembers.keys.toList
-                  .map(room =>
-                    cState.roomMembers
-                      .getOrElse(room, Set())
-                      .map(_.name)
-                      .toList
-                      .sorted
-                      .mkString(s"${room.room} Room Members:\n\t", "\n\t", "")
-                  )
-                  .mkString("Rooms:\n\t", "\n\t", "")}
-              |</pre>
-              |</body>
-              |</html>
-          """.stripMargin
+        def currentState: F[String] = {
+          cs.get.map { cState =>
+            s"""
+                |<!Doctype html>
+                |<title>Chat Server State</title>
+                |<body>
+                |<pre>Users: ${cState.userRooms.keys.size}</pre>
+                |<pre>Rooms: ${cState.roomMembers.keys.size}</pre>
+                |<pre>Overview: 
+                |${cState.roomMembers.keys.toList
+                .map(room =>
+                  cState.roomMembers
+                    .getOrElse(room, Set())
+                    .map(_.name)
+                    .toList
+                    .sorted
+                    .mkString(s"${room.room} Room Members:\n\t", "\n\t", "")
+                )
+                .mkString("Rooms:\n\t", "\n\t", "")}
+                |</pre>
+                |</body>
+                |</html>
+            """.stripMargin
+          }
         }
+
         currentState.flatMap { currState =>
           Ok(currState, `Content-Type`(MediaType.text.html))
         }
@@ -82,23 +80,26 @@ object Routes {
     }
   }.orNotFound
 
-  private def handleWebSocketStream[F[_]](
+  private def handleWebSocketStream (
       wsf: Stream[F, WebSocketFrame],
       im: InputMessage[F],
       cmd: Command[F],
       uRef: Ref[F, Option[User]]
-  ): Stream[F, OutputMessage] =
-    for
+  ): Stream[F, OutputMessage] = {
+    for {
       sf <- wsf
-      om <- Stream.evalSeq(sf match
-        case WebSocketFrame.Text(text, _) =>
-          im.parse(uRef, text)
-        case WebSocketFrame.Close(_) =>
-          cmd.disconnect(uRef)
+      om <- Stream.evalSeq(
+        sf match {
+          case WebSocketFrame.Text(text, _) =>
+            im.parse(uRef, text)
+          case WebSocketFrame.Close(_) =>
+            cmd.disconnect(uRef)
+        }
       )
-    yield om
+    } yield om
+  }
 
-  private def receive[F[_]: Temporal](
+  private def receive (
       cmd: Command[F],
       im: InputMessage[F],
       uRef: Ref[F, Option[User]],
@@ -114,7 +115,7 @@ object Routes {
             uQueue.offer(m)
         }
       }
-      .concurrently{
+      .concurrently {
         Stream
           .awakeEvery(30.seconds)
           .map(_ => KeepAlive)
@@ -122,24 +123,28 @@ object Routes {
       }
   }
 
-  private def filterMsg[F[_]: Monad](
+  private def filterMsg (
       msg: OutputMessage,
       userRef: Ref[F, Option[User]]
-  ): F[Boolean] =
-    msg match
+  ): F[Boolean] = {
+    msg match {
       case DiscardMessage => false.pure[F]
       case sendtouser @ SendToUser(_, _) =>
         userRef.get.map { _.fold(false)(u => sendtouser.forUser(u)) }
       case chatmsg @ ChatMsg(_, _, _) =>
         userRef.get.map { _.fold(false)(u => chatmsg.forUser(u)) }
       case _ => true.pure[F]
+    }
+  }
 
-  private def processMsg(msg: OutputMessage): WebSocketFrame =
-    msg match
+  private def processMsg(msg: OutputMessage): WebSocketFrame = {
+    msg match {
       case KeepAlive => WebSocketFrame.Ping()
       case msg @ _   => WebSocketFrame.Text(msg.asJson.noSpaces)
+    }
+  }
 
-  private def send[F[_]: Concurrent](
+  private def send (
       t: Topic[F, OutputMessage],
       uQueue: Queue[F, OutputMessage],
       uRef: Ref[F, Option[User]]

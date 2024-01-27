@@ -16,9 +16,10 @@ case class SuccessfulRegistration(
 ) extends OutputMessage
 object SuccessfulRegistration {
   def apply(user: User) = {
-    user match
+    user match {
       case User(name) =>
         new SuccessfulRegistration(user, s"$name entered the chat")
+    }
   }
 }
 

@@ -11,7 +11,7 @@ import Server.server
 
 object Program extends IOApp.Simple{
   def program: IO[Unit] =
-    for
+    for {
       q <- Queue.unbounded[IO, OutputMessage]
       t <- Topic[IO, OutputMessage]
       cs <- Ref.of[IO, ChatState](ChatState(Map.empty, Map.empty))
@@ -25,7 +25,7 @@ object Program extends IOApp.Simple{
           .through(t.publish),
         Stream.eval(server[IO](q, t, im, cmd, cs))
       ).parJoinUnbounded.compile.drain
-    yield s
+    } yield s
 
   override def run: IO[Unit] = program
 }

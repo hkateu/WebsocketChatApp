@@ -9,24 +9,24 @@ import cats.effect.kernel.Ref
 import com.comcast.ip4s.*
 import cats.syntax.all.*
 import org.http4s.ember.server.EmberServerBuilder
-import Routes.service
 
-object Server{
+object Server {
   def server[F[_]: Async: Files: Network](
-    q: Queue[F, OutputMessage],
-    t: Topic[F, OutputMessage],
-    im: InputMessage[F],
-    cmd: Command[F],
-    cs: Ref[F, ChatState]
-  ): F[Unit] =
+      q: Queue[F, OutputMessage],
+      t: Topic[F, OutputMessage],
+      im: InputMessage[F],
+      cmd: Command[F],
+      cs: Ref[F, ChatState]
+  ): F[Unit] = {
     val host = host"0.0.0.0"
     val port = port"8080"
     EmberServerBuilder
       .default[F]
       .withHost(host)
       .withPort(port)
-      .withHttpWebSocketApp(wsb => service(wsb, q, t, im, cmd, cs))
+      .withHttpWebSocketApp(wsb => new Routes().service(wsb, q, t, im, cmd, cs))
       .build
       .useForever
       .void
+  }
 }
