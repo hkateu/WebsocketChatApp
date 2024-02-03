@@ -25,7 +25,7 @@ class Routes[F[_]: Files: Temporal] extends Http4sDsl[F] {
       q: Queue[F, OutputMessage],
       t: Topic[F, OutputMessage],
       im: InputMessage[F],
-      cmd: Command[F],
+      protocol: Protocol[F],
       cs: Ref[F, ChatState]
   ): HttpApp[F] = {
     HttpRoutes.of[F] {
@@ -74,7 +74,7 @@ class Routes[F[_]: Files: Temporal] extends Http4sDsl[F] {
           uQueue <- Queue.unbounded[F, OutputMessage]
           ws <- wsb.build(
             send(t, uQueue, uRef),
-            receive(cmd, im, uRef, q, uQueue)
+            receive(protocol, im, uRef, q, uQueue)
           )
         } yield ws
     }
@@ -83,7 +83,7 @@ class Routes[F[_]: Files: Temporal] extends Http4sDsl[F] {
   private def handleWebSocketStream (
       wsf: Stream[F, WebSocketFrame],
       im: InputMessage[F],
-      cmd: Command[F],
+      protocol: Protocol[F],
       uRef: Ref[F, Option[User]]
   ): Stream[F, OutputMessage] = {
     for {
@@ -93,20 +93,20 @@ class Routes[F[_]: Files: Temporal] extends Http4sDsl[F] {
           case WebSocketFrame.Text(text, _) =>
             im.parse(uRef, text)
           case WebSocketFrame.Close(_) =>
-            cmd.disconnect(uRef)
+            protocol.disconnect(uRef)
         }
       )
     } yield om
   }
 
   private def receive (
-      cmd: Command[F],
+      protocol: Protocol[F],
       im: InputMessage[F],
       uRef: Ref[F, Option[User]],
       q: Queue[F, OutputMessage],
       uQueue: Queue[F, OutputMessage]
   ): Pipe[F, WebSocketFrame, Unit] = { wsf =>
-    handleWebSocketStream(wsf, im, cmd, uRef)
+    handleWebSocketStream(wsf, im, protocol, uRef)
       .evalMap { m =>
         uRef.get.flatMap {
           case Some(_) =>

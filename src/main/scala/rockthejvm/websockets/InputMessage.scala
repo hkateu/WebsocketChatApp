@@ -16,14 +16,14 @@ trait InputMessage[F[_]] {
   def parse(
       userRef: Ref[F, Option[User]],
       text: String
-  ): F[Seq[OutputMessage]]
+  ): F[List[OutputMessage]]
 }
 
 case class TextCommand(left: String, right: Option[String])
 
 object InputMessage {
   def make[F[_]: Monad](
-      command: Command[F]
+      protocol: Protocol[F]
   ): InputMessage[F] = {
     new InputMessage[F] {
       override def defaultRoom: Validated[String, Room] = {
@@ -33,18 +33,18 @@ object InputMessage {
       override def parse(
           userRef: Ref[F, Option[User]],
           text: String
-      ): F[Seq[OutputMessage]] = {
+      ): F[List[OutputMessage]] = {
         text.trim match {
-          case "" => Seq(DiscardMessage).pure[F]
-          case txt @ _ =>
+          case "" => List(DiscardMessage).pure[F]
+          case txt =>
             userRef.get.flatMap { u =>
               u.fold {
                 defaultRoom match {
                   case Valid(r) =>
-                    processText4UnReg(txt, command, userRef, r)
-                  case Invalid(e) => Seq(ParsingError(u, e)).pure[F]
+                    processText4UnReg(txt, protocol, userRef, r)
+                  case Invalid(e) => List(ParsingError(u, e)).pure[F]
                 }
-              } { user => procesText4Reg(user, txt, command) }
+              } { user => procesText4Reg(user, txt, protocol) }
             }
         }
       }
@@ -67,14 +67,14 @@ object InputMessage {
 
   private def processText4UnReg[F[_]: Monad](
       text: String,
-      cmd: Command[F],
+      protocol: Protocol[F],
       userRef: Ref[F, Option[User]],
       room: Room
-  ): F[Seq[OutputMessage]] = {
+  ): F[List[OutputMessage]] = {
     if (text.charAt(0) == '/') {
       parseToTextCommand(text).fold(
         _ =>
-          Seq(
+          List(
             ParsingError(
               None,
               "Characters after '/' must be between A-Z or a-z"
@@ -83,17 +83,17 @@ object InputMessage {
         v =>
           v match {
             case TextCommand("/name", Some(n)) =>
-              cmd.isUsernameInUse(n).flatMap { b =>
+              protocol.isUsernameInUse(n).flatMap { b =>
                 if (b) {
-                  Seq(ParsingError(None, "User name already in use")).pure[F]
+                  List(ParsingError(None, "User name already in use")).pure[F]
                 } else {
-                  cmd.register(n).flatMap {
+                  protocol.register(n).flatMap {
                     case SuccessfulRegistration(u, _) =>
                       for {
                         _ <- userRef.update(_ => Some(u))
-                        om <- cmd.enterRoom(u, room)
+                        om <- protocol.enterRoom(u, room)
                       } yield {
-                        Seq(
+                        List(
                           SendToUser(
                             u,
                             "/help shows all available commands"
@@ -101,29 +101,29 @@ object InputMessage {
                         ) ++ om
                       }
                     case parsingerror @ ParsingError(_, _) =>
-                      Seq(parsingerror).pure[F]
-                    case _ => Seq.empty[OutputMessage].pure[F]
+                      List(parsingerror).pure[F]
+                    case _ => List.empty[OutputMessage].pure[F]
                   }
                 }
               }
             case _ =>
-              Seq(UnsupportedCommand(None)).pure[F]
+              List(UnsupportedCommand(None)).pure[F]
           }
       )
     } else {
-      Seq(Register(None)).pure[F]
+      List(Register(None)).pure[F]
     }
   }
 
   private def procesText4Reg[F[_]: Applicative](
       user: User,
       text: String,
-      cmd: Command[F]
-  ): F[Seq[OutputMessage]] = {
+      protocol: Protocol[F]
+  ): F[List[OutputMessage]] = {
     if (text.charAt(0) == '/') {
       parseToTextCommand(text).fold(
         _ =>
-          Seq(
+          List(
             ParsingError(
               None,
               "Characters after '/' must be between A-Z or a-z"
@@ -132,25 +132,25 @@ object InputMessage {
         v =>
           v match {
             case TextCommand("/name", Some(n)) =>
-              Seq(ParsingError(Some(user), "You can't register again")).pure[F]
+              List(ParsingError(Some(user), "You can't register again")).pure[F]
             case TextCommand("/room", Some(r)) =>
               Room(r) match {
                 case Valid(room) =>
-                  cmd.enterRoom(user, room)
+                  protocol.enterRoom(user, room)
                 case Invalid(e) =>
-                  Seq(ParsingError(Some(user), e)).pure[F]
+                  List(ParsingError(Some(user), e)).pure[F]
               }
             case TextCommand("/help", None) =>
-              cmd.help(user)
+              protocol.help(user).map(List(_))
             case TextCommand("/rooms", None) =>
-              cmd.listRooms(user)
+              protocol.listRooms(user)
             case TextCommand("/members", None) =>
-              cmd.listMembers(user)
-            case _ => Seq(UnsupportedCommand(Some(user))).pure[F]
+              protocol.listMembers(user)
+            case _ => List(UnsupportedCommand(Some(user))).pure[F]
           }
       )
     } else {
-      cmd.chat(user, text)
+      protocol.chat(user, text)
     }
   }
 }

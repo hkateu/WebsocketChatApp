@@ -15,7 +15,7 @@ object Server {
       q: Queue[F, OutputMessage],
       t: Topic[F, OutputMessage],
       im: InputMessage[F],
-      cmd: Command[F],
+      protocol: Protocol[F],
       cs: Ref[F, ChatState]
   ): F[Unit] = {
     val host = host"0.0.0.0"
@@ -24,7 +24,9 @@ object Server {
       .default[F]
       .withHost(host)
       .withPort(port)
-      .withHttpWebSocketApp(wsb => new Routes().service(wsb, q, t, im, cmd, cs))
+      .withHttpWebSocketApp(wsb =>
+        new Routes().service(wsb, q, t, im, protocol, cs)
+      )
       .build
       .useForever
       .void

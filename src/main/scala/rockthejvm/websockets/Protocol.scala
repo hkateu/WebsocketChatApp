@@ -7,20 +7,20 @@ import cats.effect.kernel.Ref
 import cats.syntax.all.*
 import cats.Applicative
 
-trait Command[F[_]] {
+trait Protocol[F[_]] {
   def register(name: String): F[OutputMessage]
   def isUsernameInUse(name: String): F[Boolean]
-  def enterRoom(user: User, room: Room): F[Seq[OutputMessage]]
-  def chat(user: User, text: String): F[Seq[OutputMessage]]
-  def help(user: User): F[Seq[OutputMessage]]
-  def listRooms(user: User): F[Seq[OutputMessage]]
-  def listMembers(user: User): F[Seq[OutputMessage]]
-  def disconnect(userRef: Ref[F, Option[User]]): F[Seq[OutputMessage]]
+  def enterRoom(user: User, room: Room): F[List[OutputMessage]]
+  def chat(user: User, text: String): F[List[OutputMessage]]
+  def help(user: User): F[OutputMessage]
+  def listRooms(user: User): F[List[OutputMessage]]
+  def listMembers(user: User): F[List[OutputMessage]]
+  def disconnect(userRef: Ref[F, Option[User]]): F[List[OutputMessage]]
 }
 
-object Command {
-  def make[F[_]: Monad](chatState: Ref[F, ChatState]): Command[F] = {
-    new Command[F] {
+object Protocol {
+  def make[F[_]: Monad](chatState: Ref[F, ChatState]): Protocol[F] = {
+    new Protocol[F] {
       override def register(name: String): F[OutputMessage] = {
         User(name) match {
           case Valid(u) =>
@@ -36,12 +36,12 @@ object Command {
         }
       }
 
-      override def enterRoom(user: User, room: Room): F[Seq[OutputMessage]] = {
+      override def enterRoom(user: User, room: Room): F[List[OutputMessage]] = {
         chatState.get.flatMap { cs =>
           cs.userRooms.get(user) match {
             case Some(r) =>
               if (r == room) {
-                Seq(
+                List(
                   SendToUser(user, s"You are already in the ${room.room} room")
                 ).pure[F]
               } else {
@@ -58,19 +58,19 @@ object Command {
         }
       }
 
-      override def chat(user: User, text: String): F[Seq[OutputMessage]] = {
+      override def chat(user: User, text: String): F[List[OutputMessage]] = {
         for {
           cs <- chatState.get
           output <- cs.userRooms.get(user) match {
             case Some(room) =>
               broadcastMessage(cs, room, ChatMsg(user, user, text))
             case None =>
-              Seq(SendToUser(user, "You are not currently in a room")).pure[F]
+              List(SendToUser(user, "You are not currently in a room")).pure[F]
           }
         } yield output
       }
 
-      override def help(user: User): F[Seq[OutputMessage]] = {
+      override def help(user: User): F[OutputMessage] = {
         val text = """Commands:
             | /help             - Show this text
             | /room             - Change to default/entry room
@@ -78,10 +78,10 @@ object Command {
             | /rooms            - List all rooms
             | /members          - List members in current room
         """.stripMargin
-        Seq(SendToUser(user, text)).pure[F]
+        SendToUser(user, text).pure[F]
       }
 
-      override def listRooms(user: User): F[Seq[OutputMessage]] = {
+      override def listRooms(user: User): F[List[OutputMessage]] = {
         chatState.get.map { cs =>
           val roomList =
             cs.roomMembers.keys
@@ -89,11 +89,11 @@ object Command {
               .toList
               .sorted
               .mkString("Rooms:\n\t", "\n\t", "")
-          Seq(SendToUser(user, roomList))
+          List(SendToUser(user, roomList))
         }
       }
 
-      override def listMembers(user: User): F[Seq[OutputMessage]] = {
+      override def listMembers(user: User): F[List[OutputMessage]] = {
         chatState.get.map { cs =>
           val memberList =
             cs.userRooms.get(user) match {
@@ -106,16 +106,16 @@ object Command {
                   .mkString("Room Members:\n\t", "\n\t", "")
               case None => "You are not currently in a room"
             }
-          Seq(SendToUser(user, memberList))
+          List(SendToUser(user, memberList))
         }
       }
 
       override def disconnect(
           userRef: Ref[F, Option[User]]
-      ): F[Seq[OutputMessage]] = {
+      ): F[List[OutputMessage]] = {
         userRef.get.flatMap {
           case Some(user) => removeFromCurrentRoom(chatState, user)
-          case None       => Seq.empty[OutputMessage].pure[F]
+          case None       => List.empty[OutputMessage].pure[F]
         }
       }
     }
@@ -125,7 +125,7 @@ object Command {
       stateRef: Ref[F, ChatState],
       user: User,
       room: Room
-  ): F[Seq[OutputMessage]] = {
+  ): F[List[OutputMessage]] = {
     stateRef
       .updateAndGet { cs =>
         val updatedMemberList = cs.roomMembers.getOrElse(room, Set()) + user
@@ -143,11 +143,12 @@ object Command {
       }
   }
 
+
   private def broadcastMessage[F[_]: Applicative](
       cs: ChatState,
       room: Room,
       om: OutputMessage
-  ): F[Seq[OutputMessage]] = {
+  ): F[List[OutputMessage]] = {
     cs.roomMembers
       .getOrElse(room, Set.empty[User])
       .map { u =>
@@ -157,16 +158,16 @@ object Command {
           case _                      => DiscardMessage
         }
       }
-      .toSeq
+      .toList
       .pure[F]
   }
 
   private def removeFromCurrentRoom[F[_]: Monad](
       stateRef: Ref[F, ChatState],
       user: User
-  ): F[Seq[OutputMessage]] = {
+  ): F[List[OutputMessage]] = {
     stateRef.get.flatMap { cs =>
-      cs.userRooms.get(user) match
+      cs.userRooms.get(user) match {
         case Some(room) =>
           val updateMembers = cs.roomMembers.getOrElse(room, Set()) - user
           stateRef
@@ -188,7 +189,8 @@ object Command {
               )
             )
         case None =>
-          Seq.empty[OutputMessage].pure[F]
+          List.empty[OutputMessage].pure[F]
+      }
     }
   }
 }

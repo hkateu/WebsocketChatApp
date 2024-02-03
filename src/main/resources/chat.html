@@ -54,7 +54,7 @@
             output.scrollTop = output.scrollHeight;
         };
         socket.onerror = function (error) {
-            output.append(colorText("[Error] An error occured while processing data", "red"));
+            output.append(colorText("[Error] An error occurred while processing data", "red"));
             console.log("[error]" + error.data + "\n");
             output.scrollTop = output.scrollHeight;
         };
