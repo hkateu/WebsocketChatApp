@@ -22,9 +22,9 @@ object RoutesSpec extends SimpleIOSuite {
       q <- Queue.unbounded[IO, OutputMessage]
       t <- Topic[IO, OutputMessage]
       cs <- Ref.of[IO, ChatState](ChatState(Map.empty, Map.empty))
-      cmd <- IO(Command.make[IO](cs))
-      im <- IO(InputMessage.make[IO](cmd))
-    } yield new Routes().service(wsb, q, t, im, cmd, cs)
+      protocol <- IO(Protocol.make[IO](cs))
+      im <- IO(InputMessage.make[IO](protocol))
+    } yield new Routes().service(wsb, q, t, im, protocol, cs)
 
   val httpClient = service.map(Client.fromHttpApp(_))
 

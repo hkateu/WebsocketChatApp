@@ -9,7 +9,7 @@ import cats.kernel.Eq
 
 object CommandSpec extends SimpleIOSuite {
   val chatState = ChatState(Map.empty, Map.empty)
-  val command = Ref.of[IO, ChatState](chatState).map(cs => Command.make[IO](cs))
+  val command = Ref.of[IO, ChatState](chatState).map(cs => Protocol.make[IO](cs))
   // TODO: Compare ADT values
 
   // given omEquality[M <: OutputMessage]: Eq[M] = 
