@@ -44,7 +44,7 @@ object InputMessage {
                     processText4UnReg(txt, protocol, userRef, r)
                   case Invalid(e) => List(ParsingError(u, e)).pure[F]
                 }
-              } { user => procesText4Reg(user, txt, protocol) }
+              } { user => processText4Reg(user, txt, protocol) }
             }
         }
       }
@@ -115,7 +115,7 @@ object InputMessage {
     }
   }
 
-  private def procesText4Reg[F[_]: Applicative](
+  private def processText4Reg[F[_]: Applicative](
       user: User,
       text: String,
       protocol: Protocol[F]
